@@ -152,6 +152,7 @@ const ROLES=[['CD','Creative Designer'],['SD','Senior Designer'],['JD','Junior D
   ['ADM','Administratif'],['FORFAIT','Forfait'],['XX','Autre']];
 const PHASES={concept:'Concept',esquisse:'Esquisse',dev:'Développement',followup:'Follow-up',prog:'Programmation',fees:'Studio fees',logistics:'Logistique',remboursement:'Remboursement',autre:'Autre'};
 
+let fPArch=false;
 let DB={people:[],projects:{},time:{}}, dirty=false, ref=null, muted=false, LOCAL_DIR={};
 try{localStorage.removeItem('mn_prive');}catch(_){}  // purge de l'ancien cache
 
@@ -332,15 +333,21 @@ function renderPeople(){
   <p class="hint">Une personne n’est jamais supprimée : on ouvre et on ferme des périodes. Le coût d’une journée est calculé au CJM en vigueur à sa date.</p>
   <div class="kpi">
     <div>Fiches<span>${DB.people.length}</span></div>
-    <div>Actives aujourd’hui<span>${DB.people.filter(p=>activeAt(p,today)).length}</span></div>
+    <div>Actives aujourd’hui<span>${DB.people.filter(p=>!p.archive&&activeAt(p,today)).length}</span></div>
+    <div>Archivées<span>${DB.people.filter(p=>p.archive).length}</span></div>
     <div>CJM à compléter<span style="color:${gaps?'var(--warn)':'var(--ink)'}">${gaps}</span></div>
   </div>
-  <div class="row"><button class="btn" id="add-p">Ajouter une personne</button></div>
+  <div class="row"><button class="btn" id="add-p">Ajouter une personne</button>
+    <label style="display:flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:12px;margin:0">
+      <input type="checkbox" id="parch" ${fPArch?'checked':''} style="width:auto"> voir les archivées</label>
+    <span class="spacer"></span>
+    <span class="meta">Une personne archivée disparaît du time tracking, des congés et du planning.</span></div>
   <div id="list-p"></div>`;
   $('#add-p').onclick=()=>{DB.people.push({id:'',nom:'Nouvelle personne',profil:'Senior',categorie:'projet',cap:8,
     periodes:[{debut:today,fin:null,contrat:'CDI'}],cjm:[{debut:today,valeur:null}]});touch();renderPeople();};
 
-  $('#list-p').innerHTML=DB.people.map((p,i)=>{
+  $('#parch').onchange=e=>{fPArch=e.target.checked;renderPeople();};
+  $('#list-p').innerHTML=DB.people.map((p,i)=>({p,i})).filter(({p})=>fPArch||!p.archive).map(({p,i})=>{
     const act=activeAt(p,today), c=cjmAt(p,today);
     const incomplete=(p.cjm||[]).some(x=>x.valeur==null||!x.debut);
     return `<div class="card" data-i="${i}">
@@ -357,6 +364,7 @@ function renderPeople(){
           <div><label>Profil</label><select data-f="profil">${PROFILS.map(x=>`<option${x===p.profil?' selected':''}>${x}</option>`).join('')}</select></div>
           <div><label>Catégorie</label><select data-f="categorie">${CATEGORIES.map(([v,l])=>`<option value="${v}"${v===p.categorie?' selected':''}>${l}</option>`).join('')}</select></div>
           <div><label>Plafond h/jour</label><input class="num" data-f="cap" value="${p.cap??8}"></div>
+          <div><label>Archivée</label><select data-f="archive"><option value="0"${!p.archive?' selected':''}>Non</option><option value="1"${p.archive?' selected':''}>Oui</option></select></div>
         </div>
         <div class="sec"><h3>Périodes de présence</h3>
           <table><thead><tr><th>Début</th><th>Fin</th><th>Contrat</th><th></th></tr></thead><tbody>
@@ -390,6 +398,7 @@ function wirePeople(){
         const f=el.dataset.f, v=el.value;
         if(el.dataset.p!=null){const t=p.periodes[+el.dataset.p];t[f]=(f==='fin'&&!v)?null:v;}
         else if(el.dataset.c!=null){const t=p.cjm[+el.dataset.c];t[f]=(f==='valeur')?(v===''?null:parseFloat(v.replace(',','.'))):v;}
+        else if(f==='archive') p.archive=(v==='1');
         else p[f]=(f==='cap')?parseFloat(v)||8:v;
         touch();
       };
@@ -421,8 +430,6 @@ const caProjet=p=>p.caVendu?Number(p.caVendu)
 let fStat='', fQ='', fArch=false;
 function renderProjects(){
   const all=Object.values(DB.projects);
-  const list=all.filter(p=>(fArch||!p.archive)&&(!fStat||p.statut===fStat)&&(!fQ||(p.nom+' '+(p.aliases||[]).join(' ')).toLowerCase().includes(fQ)))
-                .sort((a,b)=>(b.heuresReelles||0)-(a.heuresReelles||0));
   $('#v-projects').innerHTML=`
   <h2>Projets</h2>
   <p class="hint">Le nom canonique vient de la Dropbox. Les alias sont les orthographes rencontrées dans le time tracking et le calendrier — c’est eux qui permettent le rattachement automatique.</p>
@@ -441,12 +448,18 @@ function renderProjects(){
     <button class="btn" id="add-pr">Ajouter un projet</button>
   </div>
   <div id="list-pr"></div>`;
-  $('#q').oninput=e=>{fQ=e.target.value.toLowerCase();renderProjects();$('#q').focus();};
-  $('#fs').onchange=e=>{fStat=e.target.value;renderProjects();};
-  $('#farch').onchange=e=>{fArch=e.target.checked;renderProjects();};
+  $('#q').oninput=e=>{fQ=e.target.value.toLowerCase();listProjects();};
+  $('#fs').onchange=e=>{fStat=e.target.value;listProjects();};
+  $('#farch').onchange=e=>{fArch=e.target.checked;listProjects();};
   $('#add-pr').onclick=()=>{const id='p-'+uid();DB.projects[id]={id,nom:'Nouveau projet',client:'',statut:'actif',
     proBono:false,aliases:[],heuresReelles:0,caVendu:0,devis:[]};touch();renderProjects();};
 
+  listProjects();
+}
+function listProjects(){
+  const all=Object.values(DB.projects);
+  const list=all.filter(p=>(fArch||!p.archive)&&(!fStat||p.statut===fStat)&&(!fQ||(p.nom+' '+(p.aliases||[]).join(' ')).toLowerCase().includes(fQ)))
+                .sort((a,b)=>(b.heuresReelles||0)-(a.heuresReelles||0));
   $('#list-pr').innerHTML=list.map(p=>`
     <div class="card" data-id="${esc(p.id)}">
       <div class="head" data-toggle>
