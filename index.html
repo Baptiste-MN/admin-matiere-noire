@@ -152,7 +152,7 @@ const ROLES=[['CD','Creative Designer'],['SD','Senior Designer'],['JD','Junior D
   ['ADM','Administratif'],['FORFAIT','Forfait'],['XX','Autre']];
 const PHASES={concept:'Concept',esquisse:'Esquisse',dev:'Développement',followup:'Follow-up',prog:'Programmation',fees:'Studio fees',logistics:'Logistique',remboursement:'Remboursement',autre:'Autre'};
 
-let DB={people:[],projects:{},time:{}}, dirty=false, ref=null, muted=false;
+let DB={people:[],projects:{},time:{}}, dirty=false, ref=null, muted=false, LOCAL_DIR={};
 try{localStorage.removeItem('mn_prive');}catch(_){}  // purge de l'ancien cache
 
 /* ---------- utils ---------- */
@@ -242,7 +242,9 @@ async function save(){
     await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/projects'),S.projects);
     await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/time'),S.time);
     if(user){
-      await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/prive'),S.prive);
+        await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/prive/cjm'),S.prive.cjm);
+      await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/prive/devis'),S.prive.devis);
+      await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/prive/couts'),S.prive.couts);
       dirty=false;$('#btn-save').disabled=true;
       status('Enregistré, CJM et devis compris · '+new Date().toLocaleTimeString('fr-FR'),'ok');
     }else{
@@ -280,23 +282,29 @@ function normalise(v){
         montant:Number(l.montant||0)}))}));
     R[id].remise=d.remise??R[id].remise??0;
     R[id].caVendu=d.caVendu??R[id].caVendu??0;
+    const ct=(priv.couts&&priv.couts[id])||{};
+    R[id].direction=ct.direction||R[id].direction||[];
+    R[id].externes=ct.externes||R[id].externes||[];
     R[id].coutExcel=d.coutExcel??R[id].coutExcel??0;
-    R[id].caVendu=d.caVendu??R[id].caVendu??0;
   });
   return {people:P,projects:R,time:v.time||{}};
 }
 /* Sépare à l'écriture : public d'un côté, prive/ de l'autre. */
 function split(){
   const cjm={},devis={},people=[],projects={};
+  const couts={};
   DB.people.forEach(p=>{const{cjm:c,...rest}=p;cjm[p.id]=c||[];people.push(rest);});
   Object.entries(DB.projects).forEach(([id,pr])=>{
-    const{devis:d,caVendu,...rest}=pr;
+    const{devis:d,caVendu,direction,externes,coutExcel,...rest}=pr;
+    if((direction&&direction.length)||(externes&&externes.length))
+      couts[id]={direction:direction||[],externes:externes||[]};
     const ca=caProjet(pr);
     if((d&&d.length)||ca||pr.remise)devis[id]={devis:d||[],remise:pr.remise||0,
       caVendu:pr.caVendu||ca, coutExcel:pr.coutExcel||0};
     projects[id]=rest;
   });
-  return {people,projects,time:DB.time,prive:{cjm,devis},version:2};
+  return {people,projects,time:DB.time,prive:{cjm,devis,couts,
+    direction:(LOCAL_DIR||{})},version:4};
 }
 
 /* ---------- navigation ---------- */
@@ -459,6 +467,21 @@ function renderProjects(){
           <div>${(p.aliases||[]).map((a,j)=>`<span class="tag x" data-del-a="${j}" title="Retirer">${esc(a)} ✕</span>`).join('')||'<span class="meta">Aucun alias</span>'}</div>
           <div class="row" style="margin:9px 0 0"><input data-new-a placeholder="Nouvel alias" style="min-width:210px"><button class="btn" data-add-a>Ajouter</button></div>
         </div>
+        <div class="sec"><h3>Prestataires, forfaits et achats</h3>
+          <table><thead><tr><th>Libellé</th><th style="width:120px">Type</th>
+            <th style="width:78px;text-align:right">Jours</th><th style="width:110px;text-align:right">Montant</th><th style="width:30px"></th></tr></thead><tbody>
+          ${(p.externes||[]).map((x,j)=>`<tr>
+            <td><input data-xf="label" data-x="${j}" value="${esc(x.label||'')}"></td>
+            <td><select data-xf="categorie" data-x="${j}">${['prestataire','forfait','achat','autre'].map(c=>`<option${c===x.categorie?' selected':''}>${c}</option>`).join('')}</select></td>
+            <td><input class="num" data-xf="jours" data-x="${j}" value="${x.jours??''}"></td>
+            <td><input class="num" data-xf="montant" data-x="${j}" value="${x.montant??''}"></td>
+            <td><button class="btn d" data-xdel="${j}">✕</button></td></tr>`).join('')
+            ||'<tr><td colspan="5" class="empty" style="padding:11px">Aucun coût externe</td></tr>'}
+          </tbody></table>
+          <div class="row" style="margin:7px 0 0"><button class="btn" data-xadd>Ajouter une ligne</button>
+            <span class="spacer"></span>
+            <span class="meta" style="color:var(--ink)">Total ${eur((p.externes||[]).reduce((s,x)=>s+(Number(x.montant)||0),0))}</span></div>
+        </div>
         <div class="sec"><h3>Devis</h3>
           ${(p.devis||[]).map((d,di)=>`<div class="dv${d.archive?' arch':''}" data-d="${di}">
             <div class="dvh">
@@ -529,6 +552,14 @@ function wireProjects(){
     }
 
     // en-tête de devis
+    card.querySelectorAll('[data-xf]').forEach(el=>{
+      el.onchange=()=>{const x=p.externes[+el.dataset.x], f=el.dataset.xf;
+        x[f]=(f==='jours'||f==='montant')?(el.value===''?null:parseFloat(el.value.replace(',','.'))||0):el.value;
+        touch(); reopenPr(p.id);};
+    });
+    const xa=card.querySelector('[data-xadd]');
+    if(xa) xa.onclick=()=>{(p.externes=p.externes||[]).push({id:uid(),label:'',categorie:'prestataire',jours:null,montant:0});touch();reopenPr(p.id);};
+    card.querySelectorAll('[data-xdel]').forEach(b=>b.onclick=()=>{p.externes.splice(+b.dataset.xdel,1);touch();reopenPr(p.id);});
     card.querySelectorAll('[data-df]').forEach(el=>{
       el.onchange=()=>{const di=+el.closest('.dv').dataset.d;
         p.devis[di][el.dataset.df]= el.type==='checkbox' ? el.checked : el.value;
