@@ -422,6 +422,13 @@ function roleFromLabel(s){
   if(/STAG|INTERN/.test(u))return 'ST';
   return 'XX';
 }
+function heuresProjet(pid){
+  let h=0;
+  Object.values(DB.time||{}).forEach(g=>Object.values(g).forEach(pr=>{
+    if(pr[pid]) Object.values(pr[pid]).forEach(v=>h+=v);
+  }));
+  return Math.round(h*10)/10;
+}
 const dTotal=d=>(d.lignes||[]).reduce((s,l)=>s+(Number(l.montant)||0),0);
 const caProjet=p=>p.caVendu?Number(p.caVendu)
   :(p.devis||[]).filter(d=>d.signe&&!d.archive).reduce((s,d)=>s+dTotal(d),0)-(Number(p.remise)||0);
@@ -473,6 +480,7 @@ function listProjects(){
           <div><label>Nom canonique</label><input data-f="nom" value="${esc(p.nom)}"></div>
           <div><label>Client</label><input data-f="client" value="${esc(p.client||'')}"></div>
           <div><label>Statut</label><select data-f="statut">${STATUTS.map(([v,l])=>`<option value="${v}"${v===p.statut?' selected':''}>${l}</option>`).join('')}</select></div>
+          <div><label>Heures saisies</label><input class="num" value="${heuresProjet(p.id)}" disabled title="Calculé depuis le time tracking"></div>
           <div><label>Archivé</label><select data-f="archive"><option value="0"${!p.archive?' selected':''}>Non</option><option value="1"${p.archive?' selected':''}>Oui</option></select></div>
           <div><label>Facturation</label><select data-f="proBono"><option value="0"${!p.proBono?' selected':''}>Facturé</option><option value="1"${p.proBono?' selected':''}>Pro bono</option></select></div>
         </div>
@@ -529,6 +537,7 @@ function listProjects(){
           </div>`).join('')}
           <div class="row" style="margin:10px 0 0">
             <button class="btn" data-dvadd>Ajouter un devis</button>
+            <button class="btn d" data-prdel style="border-color:var(--rule)">Supprimer ce projet</button>
             <span class="spacer"></span>
             <label style="margin:0 6px 0 0;text-transform:none;letter-spacing:0;font-size:12px">Remise</label>
             <input class="num" data-f="remise" value="${p.remise||0}" style="max-width:100px">
@@ -570,6 +579,21 @@ function wireProjects(){
         x[f]=(f==='jours'||f==='montant')?(el.value===''?null:parseFloat(el.value.replace(',','.'))||0):el.value;
         touch(); reopenPr(p.id);};
     });
+    const del=card.querySelector('[data-prdel]');
+    if(del) del.onclick=async()=>{
+      const h=heuresProjet(p.id), ca=caProjet(p);
+      let msg=`Supprimer définitivement « ${p.nom} » ?\n\n`;
+      if(h) msg+=`⚠ ${h.toLocaleString('fr-FR')} h de time tracking seront effacées.\n`;
+      if(ca) msg+=`⚠ ${eur(ca)} de devis seront effacés.\n`;
+      msg+=`\nCette action est irréversible. Exportez avant si vous avez un doute.`;
+      if(!confirm(msg)) return;
+      if((h||ca)&&!confirm(`Confirmer une seconde fois la suppression de « ${p.nom} ».`)) return;
+      // purge locale : projet, devis, coûts, temps
+      delete DB.projects[p.id];
+      Object.values(DB.time||{}).forEach(g=>Object.values(g).forEach(pr=>{delete pr[p.id];}));
+      touch(); renderProjects();
+      status(`« ${p.nom} » supprimé. Cliquez sur Enregistrer pour appliquer.`,'err');
+    };
     const xa=card.querySelector('[data-xadd]');
     if(xa) xa.onclick=()=>{(p.externes=p.externes||[]).push({id:uid(),label:'',categorie:'prestataire',jours:null,montant:0});touch();reopenPr(p.id);};
     card.querySelectorAll('[data-xdel]').forEach(b=>b.onclick=()=>{p.externes.splice(+b.dataset.xdel,1);touch();reopenPr(p.id);});
