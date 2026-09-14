@@ -434,7 +434,7 @@ const caProjet=p=>p.caVendu?Number(p.caVendu)
   :(p.devis||[]).filter(d=>d.signe&&!d.archive).reduce((s,d)=>s+dTotal(d),0)-(Number(p.remise)||0);
 
 /* ---------- projets ---------- */
-let fStat='', fQ='', fArch=false;
+let fStat='', fQ='', fArch=false, fTri='heures';
 function renderProjects(){
   const all=Object.values(DB.projects);
   $('#v-projects').innerHTML=`
@@ -452,28 +452,44 @@ function renderProjects(){
     <select id="fs"><option value="">Tous les statuts</option>${STATUTS.map(([v,l])=>`<option value="${v}"${v===fStat?' selected':''}>${l}</option>`).join('')}</select>
     <label style="display:flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:12px;margin:0">
       <input type="checkbox" id="farch" ${fArch?'checked':''} style="width:auto"> voir les archivés</label>
+    <select id="tri" style="width:auto">
+      <option value="heures">Trier par heures</option>
+      <option value="ca">Trier par montant</option>
+      <option value="nom">Trier par nom</option>
+      <option value="client">Trier par client</option>
+      <option value="statut">Trier par statut</option>
+    </select>
     <button class="btn" id="add-pr">Ajouter un projet</button>
   </div>
   <div id="list-pr"></div>`;
   $('#q').oninput=e=>{fQ=e.target.value.toLowerCase();listProjects();};
   $('#fs').onchange=e=>{fStat=e.target.value;listProjects();};
   $('#farch').onchange=e=>{fArch=e.target.checked;listProjects();};
+  $('#tri').value=fTri;
+  $('#tri').onchange=e=>{fTri=e.target.value;listProjects();};
   $('#add-pr').onclick=()=>{const id='p-'+uid();DB.projects[id]={id,nom:'Nouveau projet',client:'',statut:'actif',
     proBono:false,aliases:[],heuresReelles:0,caVendu:0,devis:[]};touch();renderProjects();};
 
   listProjects();
 }
+function triProjets(a,b){
+  if(fTri==='nom')    return a.nom.localeCompare(b.nom,'fr');
+  if(fTri==='client') return (a.client||'zzz').localeCompare(b.client||'zzz','fr')||a.nom.localeCompare(b.nom,'fr');
+  if(fTri==='statut') return (a.statut||'').localeCompare(b.statut||'')||a.nom.localeCompare(b.nom,'fr');
+  if(fTri==='ca')     return caProjet(b)-caProjet(a);
+  return (heuresProjet(b.id)||0)-(heuresProjet(a.id)||0);
+}
 function listProjects(){
   const all=Object.values(DB.projects);
   const list=all.filter(p=>(fArch||!p.archive)&&(!fStat||p.statut===fStat)&&(!fQ||(p.nom+' '+(p.aliases||[]).join(' ')).toLowerCase().includes(fQ)))
-                .sort((a,b)=>(b.heuresReelles||0)-(a.heuresReelles||0));
+                .sort(triProjets);
   $('#list-pr').innerHTML=list.map(p=>`
     <div class="card" data-id="${esc(p.id)}">
       <div class="head" data-toggle>
         <div class="st ${esc(p.statut)}" style="grid-column:1">${esc((STATUTS.find(s=>s[0]===p.statut)||['','—'])[1].split(' —')[0])}</div>
         <div><div class="nm">${esc(p.nom)}${p.proBono?' <span class="flag">pro bono</span>':''}${p.archive?' <span class="flag">archivé</span>':''}</div>
           <div class="meta">${esc(p.client||'client à renseigner')}${p.premierMois?' · '+p.premierMois+' → '+p.dernierMois:''}</div></div>
-        <div class="meta">${p.caVendu?eur(p.caVendu):'—'} · ${p.heuresReelles?num(p.heuresReelles)+' h':'0 h'}</div>
+        <div class="meta">${caProjet(p)?eur(caProjet(p)):'—'} · ${num(heuresProjet(p.id))} h</div>
       </div>
       <div class="body">
         <div class="grid">
