@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MN · Référentiel</title>
+<style>
+:root{
+  --paper:#F7F7F5; --ink:#14161A; --ink2:#5C6169; --ink3:#8C9199;
+  --rule:#DDDEDA; --rule2:#EDEEEA; --card:#FFFFFF;
+  --live:#2F6F4F; --warn:#B4711E; --stop:#A63A2B; --idle:#8C9199;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:"Helvetica Neue",Inter,system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45}
+button,input,select,textarea{font:inherit;color:inherit}
+
+/* ---- shell ---- */
+header{position:sticky;top:0;z-index:20;background:var(--paper);border-bottom:1px solid var(--rule);
+  padding:14px 22px;display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
+h1{margin:0;font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.sub{font-family:var(--mono);font-size:11px;color:var(--ink3);letter-spacing:.04em}
+.spacer{flex:1}
+nav{display:flex;gap:2px;padding:0 22px;border-bottom:1px solid var(--rule);background:var(--paper);
+  position:sticky;top:52px;z-index:19;overflow-x:auto}
+nav button{background:none;border:0;border-bottom:2px solid transparent;padding:9px 14px;cursor:pointer;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);white-space:nowrap}
+nav button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+main{padding:22px;max-width:1180px}
+h2{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2);margin:0 0 12px;font-weight:600}
+
+/* ---- status bar ---- */
+#bar{font-family:var(--mono);font-size:11px;padding:7px 22px;border-bottom:1px solid var(--rule);
+  display:flex;gap:10px;align-items:center;background:#FFFDF6}
+#bar.ok{background:#F2F7F3}
+#bar.err{background:#FCF3F1}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--idle);flex:0 0 auto}
+.dot.ok{background:var(--live)} .dot.err{background:var(--stop)}
+
+/* ---- controls ---- */
+.btn{border:1px solid var(--rule);background:var(--card);border-radius:3px;padding:5px 11px;cursor:pointer;
+  font-size:12px;transition:border-color .12s}
+.btn:hover{border-color:var(--ink3)}
+.btn.p{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.p:hover{opacity:.85}
+.btn.d{color:var(--stop);border-color:transparent;padding:2px 6px}
+.btn.d:hover{border-color:var(--stop)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+input,select{border:1px solid var(--rule);border-radius:3px;padding:4px 7px;background:var(--card);width:100%}
+input:focus,select:focus{outline:none;border-color:var(--ink)}
+input.num{font-family:var(--mono);text-align:right}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.row input,.row select{width:auto;min-width:150px}
+
+/* ---- cards ---- */
+.card{background:var(--card);border:1px solid var(--rule);border-radius:4px;margin-bottom:9px}
+.head{display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:center;padding:11px 14px;cursor:pointer}
+.head:hover{background:var(--rule2)}
+.code{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink2);
+  border:1px solid var(--rule);border-radius:2px;padding:2px 0;text-align:center}
+.nm{font-weight:500}
+.meta{font-family:var(--mono);font-size:11px;color:var(--ink3)}
+.body{display:none;padding:0 14px 15px;border-top:1px solid var(--rule2)}
+.card.open .body{display:block}
+.grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));margin:13px 0}
+label{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-bottom:3px}
+
+/* ---- tables ---- */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);text-align:left;
+  font-weight:500;padding:5px 7px;border-bottom:1px solid var(--rule)}
+td{padding:3px 7px;border-bottom:1px solid var(--rule2);vertical-align:middle}
+td.n{font-family:var(--mono);text-align:right}
+tr:last-child td{border-bottom:0}
+.sec{margin-top:15px;padding-top:12px;border-top:1px solid var(--rule2)}
+.sec h3{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink3);margin:0 0 7px;font-weight:600}
+
+/* ---- tags ---- */
+.tag{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.05em;
+  border:1px solid var(--rule);border-radius:2px;padding:1px 6px;margin:2px 3px 2px 0;color:var(--ink2)}
+.tag.x{cursor:pointer} .tag.x:hover{border-color:var(--stop);color:var(--stop)}
+.st{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.st.actif{color:var(--live)} .st.livre{color:var(--ink3)} .st.lead{color:var(--warn)}
+.st.a_classer{color:var(--stop)} .st.interne{color:var(--ink3)} .st.annule{color:var(--stop)}
+.flag{color:var(--warn);font-family:var(--mono);font-size:11px}
+.dv{border:1px solid var(--rule);border-radius:3px;padding:9px 10px;margin-bottom:9px}
+.dvh{display:flex;gap:7px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.dv td input,.dv td select{border-color:transparent;background:transparent}
+.dv td input:hover,.dv td select:hover{border-color:var(--rule)}
+.dv td input:disabled{color:var(--ink3);font-style:italic}
+.dv.arch{opacity:.5;background:var(--rule2)}
+.empty{color:var(--ink3);font-size:13px;padding:22px 0;text-align:center}
+.hint{font-size:12px;color:var(--ink2);margin:-4px 0 14px}
+.kpi{display:flex;gap:26px;flex-wrap:wrap;margin-bottom:18px;font-family:var(--mono);font-size:11px}
+.kpi div span{display:block;font-size:19px;color:var(--ink);letter-spacing:-.01em}
+.kpi div{color:var(--ink3);letter-spacing:.06em;text-transform:uppercase}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Matière Noire · Référentiel</h1>
+  <span class="sub" id="mode">—</span>
+  <span class="spacer"></span>
+  <span class="sub" id="me"></span>
+  <button class="btn" id="btn-auth">Se connecter</button>
+  <button class="btn" id="btn-export">Exporter (sauvegarde)</button>
+  <label class="btn" style="margin:0">Importer<input type="file" id="file" accept=".json" hidden></label>
+  <button class="btn p" id="btn-save" disabled>Enregistrer</button>
+</header>
+
+<div id="bar"><span class="dot" id="dot"></span><span id="msg">Chargement…</span></div>
+
+<nav>
+  <button data-v="people" aria-selected="true">Personnes</button>
+  <button data-v="projects" aria-selected="false">Projets</button>
+  <button data-v="aliases" aria-selected="false">Alias</button>
+  <button data-v="time" aria-selected="false">Temps</button>
+</nav>
+
+<main>
+  <section id="v-people"></section>
+  <section id="v-projects" hidden></section>
+  <section id="v-aliases" hidden></section>
+  <section id="v-time" hidden></section>
+</main>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   CONFIG FIREBASE — coller ici le bloc firebaseConfig repris de
+   conges-matiere-noire/index.html. Tant qu'il est vide, la page
+   fonctionne en local (import/export de fichier uniquement).
+   ═══════════════════════════════════════════════════════════════ */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyByf4SmnGJvfkkJVFhfINXikb8I8ge5VRU",
+  authDomain: "matiere-noire-todo.firebaseapp.com",
+  databaseURL: "https://matiere-noire-todo-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "matiere-noire-todo",
+  storageBucket: "matiere-noire-todo.firebasestorage.app",
+  messagingSenderId: "583651643354",
+  appId: "1:583651643354:web:74b78c43316b9d657dfae3"
+};
+const FIREBASE_KEY = 'referentiel';
+
+const PROFILS=['CEO','Direction','Studio Manager','Senior','Junior','Stagiaire','Light Op'];
+const CONTRATS=['CDI','CDD','Alternance','Stage','Freelance'];
+const CATEGORIES=[['projet','Projet — entre dans la marge'],['direction','Direction — temps estimé'],['overhead','Structure — hors marge projet']];
+const STATUTS=[['actif','Actif'],['livre','Livré'],['lead','Lead — jamais démarré'],['annule','Annulé'],['a_classer','À classer'],['interne','Interne']];
+const ROLES=[['CD','Creative Designer'],['SD','Senior Designer'],['JD','Junior Designer'],
+  ['LO','Light Op / Pupitreur'],['DP','Directeur photo'],['ALT','Alternant'],['ST','Stagiaire'],
+  ['ADM','Administratif'],['FORFAIT','Forfait'],['XX','Autre']];
+const PHASES={concept:'Concept',esquisse:'Esquisse',dev:'Développement',followup:'Follow-up',prog:'Programmation',fees:'Studio fees',logistics:'Logistique',remboursement:'Remboursement',autre:'Autre'};
+
+let fPArch=false;
+let DB={people:[],projects:{},time:{}}, dirty=false, ref=null, muted=false, LOCAL_DIR={};
+try{localStorage.removeItem('mn_prive');}catch(_){}  // purge de l'ancien cache
+
+/* ---------- utils ---------- */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=n=>n==null||n===''?'—':Number(n).toLocaleString('fr-FR',{maximumFractionDigits:2});
+const eur=n=>!n?'—':Number(n).toLocaleString('fr-FR',{maximumFractionDigits:0})+' €';
+const uid=()=>Math.random().toString(36).slice(2,9);
+function status(t,k){const b=$('#bar'),d=$('#dot');b.className=k||'';d.className='dot '+(k||'');$('#msg').textContent=t;}
+function touch(){dirty=true;$('#btn-save').disabled=false;}
+
+/* ---------- persistance ---------- */
+let auth=null, user=null;
+
+async function boot(){
+  if(!(FIREBASE_CONFIG&&FIREBASE_CONFIG.databaseURL)){
+    $('#mode').textContent='mode local';
+    status('Mode local. Importez le fichier de référentiel pour démarrer.','');
+    render(); return;
+  }
+  try{
+    const m=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+    const d=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js');
+    const a=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    const app=m.initializeApp(FIREBASE_CONFIG);
+    const db=d.getDatabase(app);
+    ref={db,d,node:d.ref(db,FIREBASE_KEY)};
+    auth={a,inst:a.getAuth(app)};
+    $('#mode').textContent='firebase · '+FIREBASE_KEY;
+
+    $('#btn-auth').onclick=async()=>{
+      if(user){await auth.a.signOut(auth.inst);return;}
+      try{
+        const p=new auth.a.GoogleAuthProvider();
+        p.setCustomParameters({prompt:'select_account'});
+        await auth.a.signInWithPopup(auth.inst,p);
+      }catch(e){
+        const fileMode=location.protocol==='file:';
+        status(fileMode
+          ? 'Connexion impossible depuis un fichier local. Cette page doit être servie par un serveur (voir la note ci-dessous).'
+          : 'Connexion refusée : '+e.message,'err');
+      }
+    };
+
+    auth.a.onAuthStateChanged(auth.inst,u=>{
+      user=u;
+      $('#me').textContent=u?u.email:'non connecté';
+      $('#btn-auth').textContent=u?'Se déconnecter':'Se connecter';
+      subscribe();
+    });
+  }catch(e){
+    $('#mode').textContent='mode local';
+    status('Firebase indisponible ('+e.message+') — mode local.','err');
+    render();
+  }
+}
+
+let unsubs=[];
+function subscribe(){
+  unsubs.forEach(f=>{try{f();}catch(_){}}); unsubs=[];
+  const d=ref.d, db=ref.db;
+  const branches=user?['people','projects','time','prive']:['people','projects','time'];
+  const pub={}; let loaded=0;
+  branches.forEach(k=>{
+    const un=d.onValue(d.ref(db,FIREBASE_KEY+'/'+k),s=>{
+      if(muted)return;
+      pub[k]=s.val()||(k==='people'?[]:{}); loaded++;
+      if(loaded>=branches.length){
+        DB=normalise(pub);
+        render();
+        status(user
+          ? 'Connecté · '+user.email+' · CJM et devis sauvegardés automatiquement'
+          : 'Lecture seule des données publiques — connectez-vous pour les CJM et les devis.',
+          user?'ok':'');
+      }
+    },e=>status('Accès refusé sur "'+k+'" : '+e.message,'err'));
+    unsubs.push(un);
+  });
+}
+
+async function save(){
+  if(!ref){download();return;}
+  const S=split();
+  try{
+    muted=true;
+    await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/people'),S.people);
+    await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/projects'),S.projects);
+    await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/time'),S.time);
+    if(user){
+        await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/prive/cjm'),S.prive.cjm);
+      await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/prive/devis'),S.prive.devis);
+      await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/prive/couts'),S.prive.couts);
+      dirty=false;$('#btn-save').disabled=true;
+      status('Enregistré, CJM et devis compris · '+new Date().toLocaleTimeString('fr-FR'),'ok');
+    }else{
+      dirty=false;$('#btn-save').disabled=true;
+      status('Publié — CJM et devis NON enregistrés (non connecté). Exportez pour les conserver.','err');
+    }
+  }catch(e){status('Échec de l’enregistrement : '+e.message,'err');}
+  finally{setTimeout(()=>muted=false,500);}
+}
+function download(){
+  const b=new Blob([JSON.stringify(split(),null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(b);
+  a.download='mn_referentiel_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();URL.revokeObjectURL(a.href);
+}
+function normalise(v){
+  const P=Array.isArray(v.people)?v.people.map(p=>({...p})):[];
+  const R=(v.projects&&!Array.isArray(v.projects))?JSON.parse(JSON.stringify(v.projects)):{};
+  const priv=v.prive||{};
+  // recompose : CJM et devis vivent sous prive/ mais s'éditent ici
+  P.forEach(p=>{p.cjm=(priv.cjm&&priv.cjm[p.id])||p.cjm||[];});
+  Object.keys(R).forEach(id=>{
+    const d=(priv.devis&&priv.devis[id])||{};
+    R[id].devis=(d.devis||R[id].devis||[]).map((dv,k)=>({
+      id:dv.id||('d'+(k+1)), numero:dv.numero||dv.label||('Devis '+(k+1)),
+      date:dv.date||'', signe:dv.signe!==false, archive:!!dv.archive,
+      lignes:(dv.lignes||[]).map((l,j)=>({
+        id:l.id||('l'+j), phase:l.phase||'autre', label:l.label||l.role||'',
+        role:l.role&&ROLES.some(r=>r[0]===l.role)?l.role:roleFromLabel(l.role||l.label||''),
+        reelJours:l.reelJours??null, reelCout:l.reelCout??null,
+        forfait:l.forfait!=null?l.forfait:(l.jours==null||l.jours===0),
+        jours:l.jours==null?null:Number(l.jours),
+        tarifJour:l.tarifJour==null?null:Number(l.tarifJour),
+        montant:Number(l.montant||0)}))}));
+    R[id].remise=d.remise??R[id].remise??0;
+    R[id].caVendu=d.caVendu??R[id].caVendu??0;
+    const ct=(priv.couts&&priv.couts[id])||{};
+    R[id].direction=ct.direction||R[id].direction||[];
+    R[id].externes=ct.externes||R[id].externes||[];
+    R[id].coutExcel=d.coutExcel??R[id].coutExcel??0;
+  });
+  return {people:P,projects:R,time:v.time||{}};
+}
+/* Sépare à l'écriture : public d'un côté, prive/ de l'autre. */
+function split(){
+  const cjm={},devis={},people=[],projects={};
+  const couts={};
+  DB.people.forEach(p=>{const{cjm:c,...rest}=p;cjm[p.id]=c||[];people.push(rest);});
+  Object.entries(DB.projects).forEach(([id,pr])=>{
+    const{devis:d,caVendu,direction,externes,coutExcel,...rest}=pr;
+    if((direction&&direction.length)||(externes&&externes.length))
+      couts[id]={direction:direction||[],externes:externes||[]};
+    const ca=caProjet(pr);
+    if((d&&d.length)||ca||pr.remise)devis[id]={devis:d||[],remise:pr.remise||0,
+      caVendu:pr.caVendu||ca, coutExcel:pr.coutExcel||0};
+    projects[id]=rest;
+  });
+  return {people,projects,time:DB.time,prive:{cjm,devis,couts,
+    direction:(LOCAL_DIR||{})},version:4};
+}
+
+/* ---------- navigation ---------- */
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.setAttribute('aria-selected',x===b));
+  ['people','projects','aliases','time'].forEach(v=>$('#v-'+v).hidden=(v!==b.dataset.v));
+  render();
+});
+const view=()=>document.querySelector('nav button[aria-selected="true"]').dataset.v;
+function render(){({people:renderPeople,projects:renderProjects,aliases:renderAliases,time:renderTime})[view()]();}
+
+/* ---------- personnes ---------- */
+function cjmAt(p,date){
+  const h=(p.cjm||[]).filter(c=>c.debut&&c.valeur!=null).sort((a,b)=>a.debut<b.debut?-1:1);
+  let v=null;for(const c of h){if(c.debut<=date)v=c.valeur;}return v;
+}
+function activeAt(p,date){
+  return (p.periodes||[]).some(x=>(!x.debut||x.debut<=date)&&(!x.fin||x.fin>=date));
+}
+function renderPeople(){
+  const today=new Date().toISOString().slice(0,10);
+  const gaps=DB.people.filter(p=>(p.cjm||[]).some(c=>c.valeur==null||!c.debut)).length;
+  $('#v-people').innerHTML=`
+  <h2>Personnes</h2>
+  <p class="hint">Une personne n’est jamais supprimée : on ouvre et on ferme des périodes. Le coût d’une journée est calculé au CJM en vigueur à sa date.</p>
+  <div class="kpi">
+    <div>Fiches<span>${DB.people.length}</span></div>
+    <div>Actives aujourd’hui<span>${DB.people.filter(p=>!p.archive&&activeAt(p,today)).length}</span></div>
+    <div>Archivées<span>${DB.people.filter(p=>p.archive).length}</span></div>
+    <div>CJM à compléter<span style="color:${gaps?'var(--warn)':'var(--ink)'}">${gaps}</span></div>
+  </div>
+  <div class="row"><button class="btn" id="add-p">Ajouter une personne</button>
+    <label style="display:flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:12px;margin:0">
+      <input type="checkbox" id="parch" ${fPArch?'checked':''} style="width:auto"> voir les archivées</label>
+    <span class="spacer"></span>
+    <span class="meta">Une personne archivée disparaît du time tracking, des congés et du planning.</span></div>
+  <div id="list-p"></div>`;
+  $('#add-p').onclick=()=>{DB.people.push({id:'',nom:'Nouvelle personne',profil:'Senior',categorie:'projet',cap:8,
+    periodes:[{debut:today,fin:null,contrat:'CDI'}],cjm:[{debut:today,valeur:null}]});touch();renderPeople();};
+
+  $('#parch').onchange=e=>{fPArch=e.target.checked;renderPeople();};
+  $('#list-p').innerHTML=DB.people.map((p,i)=>({p,i})).filter(({p})=>fPArch||!p.archive).map(({p,i})=>{
+    const act=activeAt(p,today), c=cjmAt(p,today);
+    const incomplete=(p.cjm||[]).some(x=>x.valeur==null||!x.debut);
+    return `<div class="card" data-i="${i}">
+      <div class="head" data-toggle>
+        <div class="code">${esc(p.id||'··')}</div>
+        <div><div class="nm">${esc(p.nom)}${incomplete?' <span class="flag">à compléter</span>':''}</div>
+          <div class="meta">${esc(p.profil)} · ${esc((p.periodes&&p.periodes[0]||{}).contrat||'—')} · ${act?'active':'inactive'}</div></div>
+        <div class="meta">${c==null?'CJM —':num(c)+' €/j'}</div>
+      </div>
+      <div class="body">
+        <div class="grid">
+          <div><label>Initiales</label><input data-f="id" value="${esc(p.id)}" maxlength="3"></div>
+          <div><label>Nom</label><input data-f="nom" value="${esc(p.nom)}"></div>
+          <div><label>Profil</label><select data-f="profil">${PROFILS.map(x=>`<option${x===p.profil?' selected':''}>${x}</option>`).join('')}</select></div>
+          <div><label>Catégorie</label><select data-f="categorie">${CATEGORIES.map(([v,l])=>`<option value="${v}"${v===p.categorie?' selected':''}>${l}</option>`).join('')}</select></div>
+          <div><label>Plafond h/jour</label><input class="num" data-f="cap" value="${p.cap??8}"></div>
+          <div><label>Archivée</label><select data-f="archive"><option value="0"${!p.archive?' selected':''}>Non</option><option value="1"${p.archive?' selected':''}>Oui</option></select></div>
+        </div>
+        <div class="sec"><h3>Périodes de présence</h3>
+          <table><thead><tr><th>Début</th><th>Fin</th><th>Contrat</th><th></th></tr></thead><tbody>
+          ${(p.periodes||[]).map((x,j)=>`<tr>
+            <td><input type="date" data-p="${j}" data-f="debut" value="${x.debut||''}"></td>
+            <td><input type="date" data-p="${j}" data-f="fin" value="${x.fin||''}" placeholder="en cours"></td>
+            <td><select data-p="${j}" data-f="contrat">${CONTRATS.map(c=>`<option${c===x.contrat?' selected':''}>${c}</option>`).join('')}</select></td>
+            <td style="width:32px"><button class="btn d" data-del-p="${j}">✕</button></td></tr>`).join('')||'<tr><td colspan="4" class="empty">Aucune période</td></tr>'}
+          </tbody></table>
+          <button class="btn" data-add-p style="margin-top:7px">Ajouter une période</button>
+        </div>
+        <div class="sec"><h3>Historique du coût journalier</h3>
+          <table><thead><tr><th>À partir du</th><th style="text-align:right">CJM €/j</th><th>Note</th><th></th></tr></thead><tbody>
+          ${(p.cjm||[]).map((x,j)=>`<tr>
+            <td><input type="date" data-c="${j}" data-f="debut" value="${x.debut||''}"></td>
+            <td style="width:120px"><input class="num" data-c="${j}" data-f="valeur" value="${x.valeur??''}" placeholder="—"></td>
+            <td><input data-c="${j}" data-f="note" value="${esc(x.note||'')}"></td>
+            <td style="width:32px"><button class="btn d" data-del-c="${j}">✕</button></td></tr>`).join('')||'<tr><td colspan="4" class="empty">Aucun CJM</td></tr>'}
+          </tbody></table>
+          <button class="btn" data-add-c style="margin-top:7px">Ajouter un changement de CJM</button>
+        </div>
+      </div></div>`;}).join('');
+  wirePeople();
+}
+function wirePeople(){
+  $('#list-p').querySelectorAll('.card').forEach(card=>{
+    const i=+card.dataset.i, p=DB.people[i];
+    card.querySelector('[data-toggle]').onclick=()=>card.classList.toggle('open');
+    card.querySelectorAll('.body input,.body select').forEach(el=>{
+      el.onchange=()=>{
+        const f=el.dataset.f, v=el.value;
+        if(el.dataset.p!=null){const t=p.periodes[+el.dataset.p];t[f]=(f==='fin'&&!v)?null:v;}
+        else if(el.dataset.c!=null){const t=p.cjm[+el.dataset.c];t[f]=(f==='valeur')?(v===''?null:parseFloat(v.replace(',','.'))):v;}
+        else if(f==='archive') p.archive=(v==='1');
+        else p[f]=(f==='cap')?parseFloat(v)||8:v;
+        touch();
+      };
+      el.onclick=e=>e.stopPropagation();
+    });
+    card.querySelector('[data-add-p]').onclick=()=>{(p.periodes=p.periodes||[]).push({debut:'',fin:null,contrat:'CDI'});touch();reopen(i,renderPeople);};
+    card.querySelector('[data-add-c]').onclick=()=>{(p.cjm=p.cjm||[]).push({debut:'',valeur:null});touch();reopen(i,renderPeople);};
+    card.querySelectorAll('[data-del-p]').forEach(b=>b.onclick=()=>{p.periodes.splice(+b.dataset.delP,1);touch();reopen(i,renderPeople);});
+    card.querySelectorAll('[data-del-c]').forEach(b=>b.onclick=()=>{p.cjm.splice(+b.dataset.delC,1);touch();reopen(i,renderPeople);});
+  });
+}
+function reopen(i,fn){fn();const c=document.querySelector(`[data-i="${i}"]`);if(c)c.classList.add('open');}
+
+function roleFromLabel(s){
+  const u=String(s).toUpperCase();
+  if(/\bCD\b|CREATIVE/.test(u))return 'CD';
+  if(/\bSD\b|SENIOR/.test(u))return 'SD';
+  if(/\bJD\b|JUNIOR/.test(u))return 'JD';
+  if(/\bLO\b|LIGHT/.test(u))return 'LO';
+  if(/\bSV\b|SUPERV|SUIVI/.test(u))return 'SV';
+  if(/STAG|INTERN/.test(u))return 'ST';
+  return 'XX';
+}
+function heuresProjet(pid){
+  let h=0;
+  Object.values(DB.time||{}).forEach(g=>Object.values(g).forEach(pr=>{
+    if(pr[pid]) Object.values(pr[pid]).forEach(v=>h+=v);
+  }));
+  return Math.round(h*10)/10;
+}
+const dTotal=d=>(d.lignes||[]).reduce((s,l)=>s+(Number(l.montant)||0),0);
+const caProjet=p=>p.caVendu?Number(p.caVendu)
+  :(p.devis||[]).filter(d=>d.signe&&!d.archive).reduce((s,d)=>s+dTotal(d),0)-(Number(p.remise)||0);
+
+/* ---------- projets ---------- */
+let fStat='', fQ='', fArch=false, fTri='heures';
+function renderProjects(){
+  const all=Object.values(DB.projects);
+  $('#v-projects').innerHTML=`
+  <h2>Projets</h2>
+  <p class="hint">Le nom canonique vient de la Dropbox. Les alias sont les orthographes rencontrées dans le time tracking et le calendrier — c’est eux qui permettent le rattachement automatique.</p>
+  <div class="kpi">
+    <div>Projets<span>${all.length}</span></div>
+    <div>Actifs<span>${all.filter(p=>p.statut==='actif').length}</span></div>
+    <div>Leads<span>${all.filter(p=>p.statut==='lead').length}</span></div>
+    <div>CA devis<span>${eur(all.reduce((s,p)=>s+(p.caVendu||0),0))}</span></div>
+    <div>Heures suivies<span>${num(Math.round(all.reduce((s,p)=>s+(p.heuresReelles||0),0)))}</span></div>
+  </div>
+  <div class="row">
+    <input id="q" placeholder="Rechercher un projet ou un alias…" value="${esc(fQ)}" style="min-width:250px">
+    <select id="fs"><option value="">Tous les statuts</option>${STATUTS.map(([v,l])=>`<option value="${v}"${v===fStat?' selected':''}>${l}</option>`).join('')}</select>
+    <label style="display:flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:12px;margin:0">
+      <input type="checkbox" id="farch" ${fArch?'checked':''} style="width:auto"> voir les archivés</label>
+    <select id="tri" style="width:auto">
+      <option value="heures">Trier par heures</option>
+      <option value="ca">Trier par montant</option>
+      <option value="nom">Trier par nom</option>
+      <option value="client">Trier par client</option>
+      <option value="statut">Trier par statut</option>
+    </select>
+    <button class="btn" id="add-pr">Ajouter un projet</button>
+  </div>
+  <div id="list-pr"></div>`;
+  $('#q').oninput=e=>{fQ=e.target.value.toLowerCase();listProjects();};
+  $('#fs').onchange=e=>{fStat=e.target.value;listProjects();};
+  $('#farch').onchange=e=>{fArch=e.target.checked;listProjects();};
+  $('#tri').value=fTri;
+  $('#tri').onchange=e=>{fTri=e.target.value;listProjects();};
+  $('#add-pr').onclick=()=>{const id='p-'+uid();DB.projects[id]={id,nom:'Nouveau projet',client:'',statut:'actif',
+    proBono:false,aliases:[],heuresReelles:0,caVendu:0,devis:[]};touch();renderProjects();};
+
+  listProjects();
+}
+function triProjets(a,b){
+  if(fTri==='nom')    return a.nom.localeCompare(b.nom,'fr');
+  if(fTri==='client') return (a.client||'zzz').localeCompare(b.client||'zzz','fr')||a.nom.localeCompare(b.nom,'fr');
+  if(fTri==='statut') return (a.statut||'').localeCompare(b.statut||'')||a.nom.localeCompare(b.nom,'fr');
+  if(fTri==='ca')     return caProjet(b)-caProjet(a);
+  return (heuresProjet(b.id)||0)-(heuresProjet(a.id)||0);
+}
+function listProjects(){
+  const all=Object.values(DB.projects);
+  const list=all.filter(p=>(fArch||!p.archive)&&(!fStat||p.statut===fStat)&&(!fQ||(p.nom+' '+(p.aliases||[]).join(' ')).toLowerCase().includes(fQ)))
+                .sort(triProjets);
+  $('#list-pr').innerHTML=list.map(p=>`
+    <div class="card" data-id="${esc(p.id)}">
+      <div class="head" data-toggle>
+        <div class="st ${esc(p.statut)}" style="grid-column:1">${esc((STATUTS.find(s=>s[0]===p.statut)||['','—'])[1].split(' —')[0])}</div>
+        <div><div class="nm">${esc(p.nom)}${p.proBono?' <span class="flag">pro bono</span>':''}${p.archive?' <span class="flag">archivé</span>':''}</div>
+          <div class="meta">${esc(p.client||'client à renseigner')}${p.premierMois?' · '+p.premierMois+' → '+p.dernierMois:''}</div></div>
+        <div class="meta">${caProjet(p)?eur(caProjet(p)):'—'} · ${num(heuresProjet(p.id))} h</div>
+      </div>
+      <div class="body">
+        <div class="grid">
+          <div><label>Nom canonique</label><input data-f="nom" value="${esc(p.nom)}"></div>
+          <div><label>Client</label><input data-f="client" value="${esc(p.client||'')}"></div>
+          <div><label>Statut</label><select data-f="statut">${STATUTS.map(([v,l])=>`<option value="${v}"${v===p.statut?' selected':''}>${l}</option>`).join('')}</select></div>
+          <div><label>Heures saisies</label><input class="num" value="${heuresProjet(p.id)}" disabled title="Calculé depuis le time tracking"></div>
+          <div><label>Archivé</label><select data-f="archive"><option value="0"${!p.archive?' selected':''}>Non</option><option value="1"${p.archive?' selected':''}>Oui</option></select></div>
+          <div><label>Facturation</label><select data-f="proBono"><option value="0"${!p.proBono?' selected':''}>Facturé</option><option value="1"${p.proBono?' selected':''}>Pro bono</option></select></div>
+        </div>
+        <div class="sec"><h3>Alias reconnus</h3>
+          <div>${(p.aliases||[]).map((a,j)=>`<span class="tag x" data-del-a="${j}" title="Retirer">${esc(a)} ✕</span>`).join('')||'<span class="meta">Aucun alias</span>'}</div>
+          <div class="row" style="margin:9px 0 0"><input data-new-a placeholder="Nouvel alias" style="min-width:210px"><button class="btn" data-add-a>Ajouter</button></div>
+        </div>
+        <div class="sec"><h3>Prestataires, forfaits et achats</h3>
+          <table><thead><tr><th>Libellé</th><th style="width:120px">Type</th>
+            <th style="width:78px;text-align:right">Jours</th><th style="width:110px;text-align:right">Montant</th><th style="width:30px"></th></tr></thead><tbody>
+          ${(p.externes||[]).map((x,j)=>`<tr>
+            <td><input data-xf="label" data-x="${j}" value="${esc(x.label||'')}"></td>
+            <td><select data-xf="categorie" data-x="${j}">${['prestataire','forfait','achat','autre'].map(c=>`<option${c===x.categorie?' selected':''}>${c}</option>`).join('')}</select></td>
+            <td><input class="num" data-xf="jours" data-x="${j}" value="${x.jours??''}"></td>
+            <td><input class="num" data-xf="montant" data-x="${j}" value="${x.montant??''}"></td>
+            <td><button class="btn d" data-xdel="${j}">✕</button></td></tr>`).join('')
+            ||'<tr><td colspan="5" class="empty" style="padding:11px">Aucun coût externe</td></tr>'}
+          </tbody></table>
+          <div class="row" style="margin:7px 0 0"><button class="btn" data-xadd>Ajouter une ligne</button>
+            <span class="spacer"></span>
+            <span class="meta" style="color:var(--ink)">Total ${eur((p.externes||[]).reduce((s,x)=>s+(Number(x.montant)||0),0))}</span></div>
+        </div>
+        <div class="sec"><h3>Devis</h3>
+          ${(p.devis||[]).map((d,di)=>`<div class="dv${d.archive?' arch':''}" data-d="${di}">
+            <div class="dvh">
+              <input data-df="numero" value="${esc(d.numero)}" placeholder="N° de devis" style="max-width:190px">
+              <input type="date" data-df="date" value="${d.date||''}" style="max-width:150px">
+              <label style="display:flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:12px;margin:0">
+                <input type="checkbox" data-df="signe" ${d.signe?'checked':''} style="width:auto"> signé</label>
+              <label style="display:flex;gap:5px;align-items:center;text-transform:none;letter-spacing:0;font-size:12px;margin:0">
+                <input type="checkbox" data-df="archive" ${d.archive?'checked':''} style="width:auto"> archivé</label>
+              <span class="spacer"></span>
+              <span class="meta" style="color:var(--ink)">${eur(dTotal(d))}</span>
+              <button class="btn d" data-dvdel="${di}" title="Supprimer ce devis">✕</button>
+            </div>
+            <table><thead><tr><th style="width:110px">Phase</th><th>Libellé</th><th style="width:70px">Profil</th>
+              <th style="width:70px;text-align:right">Jours</th><th style="width:88px;text-align:right">Tarif/j</th>
+              <th style="width:100px;text-align:right">Montant</th>
+              <th style="width:66px;text-align:right">Réel j</th><th style="width:82px;text-align:right">Réel €</th>
+              <th style="width:30px"></th></tr></thead><tbody>
+            ${(d.lignes||[]).map((l,li)=>`<tr>
+              <td><select data-lf="phase" data-d="${di}" data-l="${li}">${Object.entries(PHASES).map(([v,n])=>`<option value="${v}"${v===l.phase?' selected':''}>${n}</option>`).join('')}</select></td>
+              <td><input data-lf="label" data-d="${di}" data-l="${li}" value="${esc(l.label)}"></td>
+              <td><select data-lf="role" data-d="${di}" data-l="${li}">${ROLES.map(([v,n])=>`<option value="${v}"${v===l.role?' selected':''} title="${n}">${v}</option>`).join('')}</select></td>
+              <td><input class="num" data-lf="jours" data-d="${di}" data-l="${li}" value="${l.forfait?'':(l.jours??'')}" placeholder="${l.forfait?'forfait':'—'}"${l.forfait?' disabled':''}></td>
+              <td><input class="num" data-lf="tarifJour" data-d="${di}" data-l="${li}" value="${l.forfait?'':(l.tarifJour??'')}"${l.forfait?' disabled':''}></td>
+              <td><input class="num" data-lf="montant" data-d="${di}" data-l="${li}" value="${l.montant??''}"></td>
+              <td class="n meta">${l.reelJours??'—'}</td><td class="n meta">${l.reelCout!=null?eur(l.reelCout):'—'}</td>
+              <td><button class="btn d" data-ldel="${di}_${li}" title="Supprimer la ligne">✕</button></td></tr>`).join('')
+              ||'<tr><td colspan="9" class="empty" style="padding:12px">Aucune ligne</td></tr>'}
+            </tbody></table>
+            <button class="btn" data-ladd="${di}" style="margin-top:6px">Ajouter une ligne</button>
+            <button class="btn" data-lfor="${di}" style="margin-top:6px">Ajouter un forfait</button>
+          </div>`).join('')}
+          <div class="row" style="margin:10px 0 0">
+            <button class="btn" data-dvadd>Ajouter un devis</button>
+            <button class="btn d" data-prdel style="border-color:var(--rule)">Supprimer ce projet</button>
+            <span class="spacer"></span>
+            <label style="margin:0 6px 0 0;text-transform:none;letter-spacing:0;font-size:12px">Remise</label>
+            <input class="num" data-f="remise" value="${p.remise||0}" style="max-width:100px">
+            <label style="margin:0 6px 0 12px;text-transform:none;letter-spacing:0;font-size:12px">Total projet</label>
+            <input class="num" data-f="caVendu" value="${p.caVendu||0}" style="max-width:120px" title="Fait foi. Laissez 0 pour calculer depuis les lignes.">
+            ${(()=>{const s=(p.devis||[]).filter(d=>d.signe&&!d.archive).reduce((a,d)=>a+dTotal(d),0)-(Number(p.remise)||0);
+              const t=Number(p.caVendu)||0; const e=t?s-t:0;
+              return t&&Math.abs(e)>1?`<span class="flag">lignes ${eur(s)} · écart ${e>0?'+':''}${eur(e)}</span>`
+                :`<span class="meta">lignes ${eur(s)}</span>`;})()}
+          </div>
+        </div>
+      </div></div>`).join('')||'<div class="empty">Aucun projet ne correspond.</div>';
+  wireProjects();
+}
+function wireProjects(){
+  $('#list-pr').querySelectorAll('.card').forEach(card=>{
+    const p=DB.projects[card.dataset.id];
+    card.querySelector('[data-toggle]').onclick=()=>card.classList.toggle('open');
+
+    card.querySelectorAll('.body > .grid input[data-f], .body > .grid select[data-f], .body input[data-f="remise"]').forEach(el=>{
+      el.onchange=()=>{const f=el.dataset.f;
+        p[f]=(f==='proBono'||f==='archive')?el.value==='1'
+            :(f==='remise'||f==='caVendu')?(parseFloat(el.value.replace(',','.'))||0):el.value;
+        touch(); if(f==='remise'||f==='caVendu'||f==='archive')reopenPr(p.id);};
+    });
+
+    // alias
+    const inp=card.querySelector('[data-new-a]');
+    if(inp){
+      const add=()=>{const v=inp.value.trim();if(!v)return;(p.aliases=p.aliases||[]).push(v);inp.value='';touch();reopenPr(p.id);};
+      card.querySelector('[data-add-a]').onclick=add;
+      inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add();}};
+      card.querySelectorAll('[data-del-a]').forEach(t=>t.onclick=()=>{p.aliases.splice(+t.dataset.delA,1);touch();reopenPr(p.id);});
+    }
+
+    // en-tête de devis
+    card.querySelectorAll('[data-xf]').forEach(el=>{
+      el.onchange=()=>{const x=p.externes[+el.dataset.x], f=el.dataset.xf;
+        x[f]=(f==='jours'||f==='montant')?(el.value===''?null:parseFloat(el.value.replace(',','.'))||0):el.value;
+        touch(); reopenPr(p.id);};
+    });
+    const del=card.querySelector('[data-prdel]');
+    if(del) del.onclick=async()=>{
+      const h=heuresProjet(p.id), ca=caProjet(p);
+      let msg=`Supprimer définitivement « ${p.nom} » ?\n\n`;
+      if(h) msg+=`⚠ ${h.toLocaleString('fr-FR')} h de time tracking seront effacées.\n`;
+      if(ca) msg+=`⚠ ${eur(ca)} de devis seront effacés.\n`;
+      msg+=`\nCette action est irréversible. Exportez avant si vous avez un doute.`;
+      if(!confirm(msg)) return;
+      if((h||ca)&&!confirm(`Confirmer une seconde fois la suppression de « ${p.nom} ».`)) return;
+      // purge locale : projet, devis, coûts, temps
+      delete DB.projects[p.id];
+      Object.values(DB.time||{}).forEach(g=>Object.values(g).forEach(pr=>{delete pr[p.id];}));
+      touch(); renderProjects();
+      status(`« ${p.nom} » supprimé. Cliquez sur Enregistrer pour appliquer.`,'err');
+    };
+    const xa=card.querySelector('[data-xadd]');
+    if(xa) xa.onclick=()=>{(p.externes=p.externes||[]).push({id:uid(),label:'',categorie:'prestataire',jours:null,montant:0});touch();reopenPr(p.id);};
+    card.querySelectorAll('[data-xdel]').forEach(b=>b.onclick=()=>{p.externes.splice(+b.dataset.xdel,1);touch();reopenPr(p.id);});
+    card.querySelectorAll('[data-df]').forEach(el=>{
+      el.onchange=()=>{const di=+el.closest('.dv').dataset.d;
+        p.devis[di][el.dataset.df]= el.type==='checkbox' ? el.checked : el.value;
+        touch(); reopenPr(p.id);};
+    });
+    card.querySelector('[data-dvadd]').onclick=()=>{
+      (p.devis=p.devis||[]).push({id:uid(),numero:'',date:new Date().toISOString().slice(0,10),signe:false,archive:false,lignes:[]});
+      touch();reopenPr(p.id);};
+    card.querySelectorAll('[data-dvdel]').forEach(b=>b.onclick=()=>{
+      const d=p.devis[+b.dataset.dvdel];
+      if(dTotal(d)&&!confirm(`Supprimer le devis « ${d.numero||'sans numéro'} » (${eur(dTotal(d))}) ?`))return;
+      p.devis.splice(+b.dataset.dvdel,1);touch();reopenPr(p.id);});
+
+    // lignes
+    card.querySelectorAll('[data-lf]').forEach(el=>{
+      el.onchange=()=>{
+        const l=p.devis[+el.dataset.d].lignes[+el.dataset.l], f=el.dataset.lf;
+        const nv=v=>v===''?null:parseFloat(String(v).replace(',','.'));
+        if(f==='jours'||f==='tarifJour'){
+          l[f]=nv(el.value);
+          if(l.jours!=null&&l.tarifJour!=null)l.montant=Math.round(l.jours*l.tarifJour*100)/100;
+        } else if(f==='montant'){ l.montant=nv(el.value)||0; }
+        else l[f]=el.value;
+        touch();reopenPr(p.id);
+      };
+    });
+    card.querySelectorAll('[data-ladd]').forEach(b=>b.onclick=()=>{
+      p.devis[+b.dataset.ladd].lignes.push({id:uid(),phase:'esquisse',label:'',role:'SD',forfait:false,jours:null,tarifJour:null,montant:0});
+      touch();reopenPr(p.id);});
+    card.querySelectorAll('[data-lfor]').forEach(b=>b.onclick=()=>{
+      p.devis[+b.dataset.lfor].lignes.push({id:uid(),phase:'concept',label:'',role:'CD',forfait:true,jours:null,tarifJour:null,montant:0});
+      touch();reopenPr(p.id);});
+    card.querySelectorAll('[data-ldel]').forEach(b=>b.onclick=()=>{
+      const [di,li]=b.dataset.ldel.split('_').map(Number);
+      p.devis[di].lignes.splice(li,1);touch();reopenPr(p.id);});
+  });
+}
+function reopenPr(id){renderProjects();const c=document.querySelector(`[data-id="${CSS.escape(id)}"]`);if(c)c.classList.add('open');}
+
+/* ---------- alias ---------- */
+function renderAliases(){
+  const rows=[];
+  Object.values(DB.projects).forEach(p=>(p.aliases||[]).forEach(a=>rows.push({a,p})));
+  rows.sort((x,y)=>x.a.localeCompare(y.a,'fr'));
+  const dup={};rows.forEach(r=>{const k=r.a.toUpperCase();(dup[k]=dup[k]||[]).push(r);});
+  const conflicts=Object.values(dup).filter(g=>g.length>1);
+  $('#v-aliases').innerHTML=`
+  <h2>Table des alias</h2>
+  <p class="hint">Chaque orthographe rencontrée et le projet auquel elle est rattachée. Un alias en conflit pointe vers deux projets — le rattachement automatique deviendrait ambigu.</p>
+  <div class="kpi">
+    <div>Alias<span>${rows.length}</span></div>
+    <div>Projets couverts<span>${new Set(rows.map(r=>r.p.id)).size}</span></div>
+    <div>Conflits<span style="color:${conflicts.length?'var(--stop)':'var(--ink)'}">${conflicts.length}</span></div>
+  </div>
+  ${conflicts.length?`<div class="card" style="border-color:var(--stop);margin-bottom:16px"><div style="padding:12px 14px">
+    <h3 style="margin:0 0 7px;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--stop)">Conflits à résoudre</h3>
+    ${conflicts.map(g=>`<div class="meta" style="margin-bottom:4px"><strong style="color:var(--ink)">${esc(g[0].a)}</strong> → ${g.map(r=>esc(r.p.nom)).join(' · ')}</div>`).join('')}
+  </div></div>`:''}
+  <div class="card"><table><thead><tr><th>Alias</th><th>Projet canonique</th><th>Statut</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td class="meta" style="color:var(--ink)">${esc(r.a)}</td><td>${esc(r.p.nom)}</td>
+    <td class="st ${esc(r.p.statut)}">${esc((STATUTS.find(s=>s[0]===r.p.statut)||['','—'])[1].split(' —')[0])}</td></tr>`).join('')
+    ||'<tr><td colspan="3" class="empty">Aucun alias.</td></tr>'}
+  </tbody></table></div>`;
+}
+
+/* ---------- temps ---------- */
+function renderTime(){
+  const months=Object.keys(DB.time).sort();
+  if(!months.length){$('#v-time').innerHTML='<h2>Temps</h2><div class="empty">Aucune donnée de temps.</div>';return;}
+  const ids={};DB.people.forEach(p=>ids[p.id]=p);
+  const people=[...new Set(months.flatMap(m=>Object.keys(DB.time[m])))].sort();
+  let grand=0;
+  const cell=(m,u)=>{let h=0;const d=DB.time[m][u]||{};Object.values(d).forEach(days=>Object.values(days).forEach(v=>h+=v));return h;};
+  const body=months.map(m=>{
+    let t=0;const tds=people.map(u=>{const h=cell(m,u);t+=h;return `<td class="n"${h?'':' style="color:var(--rule)"'}>${h?num(h):'·'}</td>`;}).join('');
+    grand+=t;
+    return `<tr><td class="meta" style="color:var(--ink)">${m}</td>${tds}<td class="n" style="font-weight:600">${num(t)}</td></tr>`;
+  }).join('');
+  $('#v-time').innerHTML=`
+  <h2>Temps saisis</h2>
+  <p class="hint">Vue de contrôle en lecture seule : la saisie se fait dans l’outil de time tracking, pas ici. Heures brutes, avant plafonnement à ${'8'} h/jour.</p>
+  <div class="kpi">
+    <div>Mois<span>${months.length}</span></div>
+    <div>Heures<span>${num(Math.round(grand))}</span></div>
+    <div>Jours<span>${num(Math.round(grand/8))}</span></div>
+    <div>Personnes<span>${people.length}</span></div>
+  </div>
+  <div class="card" style="overflow-x:auto"><table>
+    <thead><tr><th>Mois</th>${people.map(u=>`<th style="text-align:right" title="${esc((ids[u]||{}).nom||u)}">${esc(u)}</th>`).join('')}<th style="text-align:right">Total</th></tr></thead>
+    <tbody>${body}</tbody></table></div>`;
+}
+
+/* ---------- import / export ---------- */
+$('#btn-export').onclick=download;
+$('#btn-save').onclick=save;
+$('#file').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const raw=JSON.parse(r.result);
+      const sensible=raw.prive&&(raw.prive.cjm||raw.prive.devis);
+      if(sensible&&ref&&!user){
+        status('Ce fichier contient des CJM et des devis : connectez-vous avant de l’importer.','err');
+        return;
+      }
+      DB=normalise(raw);touch();render();
+      status(`Importé : ${DB.people.length} personnes · ${Object.keys(DB.projects).length} projets · ${Object.keys(DB.time).length} mois. Cliquez sur Enregistrer.`,'ok');
+    }catch(err){status('Fichier illisible : '+err.message,'err');}
+  };
+  r.readAsText(f);e.target.value='';
+};
+window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
+if(location.protocol==='file:'){
+  const d=document.createElement('div');
+  d.style.cssText='background:#FCF3F1;border-bottom:1px solid var(--rule);padding:9px 22px;font-size:12px';
+  d.innerHTML='Cette page est ouverte en <code>file://</code> : la connexion Google est impossible et les CJM resteront inaccessibles. Servez-la depuis <code>http://localhost</code> ou déployez-la.';
+  document.querySelector('#bar').after(d);
+}
+boot();
+</script>
+</body>
+</html>
