@@ -90,6 +90,11 @@ tr:last-child td{border-bottom:0}
 .dv td input:hover,.dv td select:hover{border-color:var(--rule)}
 .dv td input:disabled{color:var(--ink3);font-style:italic}
 .dv.arch{opacity:.5;background:var(--rule2)}
+.grp{display:flex;align-items:baseline;gap:10px;margin:20px 0 8px;padding-bottom:5px;
+  border-bottom:1px solid var(--rule);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink2);font-weight:600}
+.grp:first-child{margin-top:4px}
+.grp span{font-family:var(--mono);font-size:10px;letter-spacing:.05em;color:var(--ink3);text-transform:none;font-weight:400}
 .empty{color:var(--ink3);font-size:13px;padding:22px 0;text-align:center}
 .hint{font-size:12px;color:var(--ink2);margin:-4px 0 14px}
 .kpi{display:flex;gap:26px;flex-wrap:wrap;margin-bottom:18px;font-family:var(--mono);font-size:11px}
@@ -460,6 +465,7 @@ function renderProjects(){
       <option value="statut">Trier par statut</option>
     </select>
     <button class="btn" id="add-pr">Ajouter un projet</button>
+    <button class="btn" id="unarch-livre">Désarchiver les livrés</button>
   </div>
   <div id="list-pr"></div>`;
   $('#q').oninput=e=>{fQ=e.target.value.toLowerCase();listProjects();};
@@ -467,12 +473,24 @@ function renderProjects(){
   $('#farch').onchange=e=>{fArch=e.target.checked;listProjects();};
   $('#tri').value=fTri;
   $('#tri').onchange=e=>{fTri=e.target.value;listProjects();};
+  $('#unarch-livre').onclick=()=>{
+    const cibles=Object.values(DB.projects).filter(p=>p.archive&&p.statut==='livre');
+    if(!cibles.length){status('Aucun projet livré n’est archivé.','');return;}
+    if(!confirm(`Désarchiver ${cibles.length} projet${cibles.length>1?'s':''} livré${cibles.length>1?'s':''} ?\n\n`
+      +`Ils réapparaîtront dans la rentabilité et resteront absents du time tracking (réservé aux projets actifs).`))return;
+    cibles.forEach(p=>p.archive=false);
+    touch(); renderProjects();
+    status(`${cibles.length} projets livrés désarchivés. Cliquez sur Enregistrer.`,'ok');
+  };
   $('#add-pr').onclick=()=>{const id='p-'+uid();DB.projects[id]={id,nom:'Nouveau projet',client:'',statut:'actif',
     proBono:false,aliases:[],heuresReelles:0,caVendu:0,devis:[]};touch();renderProjects();};
 
   listProjects();
 }
+const RANG={actif:0,interne:1,livre:2,a_classer:3,annule:4,lead:5};
 function triProjets(a,b){
+  const g=(RANG[a.statut]??9)-(RANG[b.statut]??9);
+  if(fTri!=='nom'&&g) return g;
   if(fTri==='nom')    return a.nom.localeCompare(b.nom,'fr');
   if(fTri==='client') return (a.client||'zzz').localeCompare(b.client||'zzz','fr')||a.nom.localeCompare(b.nom,'fr');
   if(fTri==='statut') return (a.statut||'').localeCompare(b.statut||'')||a.nom.localeCompare(b.nom,'fr');
@@ -483,7 +501,17 @@ function listProjects(){
   const all=Object.values(DB.projects);
   const list=all.filter(p=>(fArch||!p.archive)&&(!fStat||p.statut===fStat)&&(!fQ||(p.nom+' '+(p.aliases||[]).join(' ')).toLowerCase().includes(fQ)))
                 .sort(triProjets);
-  $('#list-pr').innerHTML=list.map(p=>`
+  let dernierGroupe=null;
+  const titre={actif:'En cours',interne:'Interne',livre:'Livrés',a_classer:'À classer',annule:'Annulés',lead:'Leads'};
+  $('#list-pr').innerHTML=list.map(p=>{
+    let sep='';
+    if(fTri!=='nom'&&p.statut!==dernierGroupe){
+      dernierGroupe=p.statut;
+      const n=list.filter(x=>x.statut===p.statut).length;
+      const ca=list.filter(x=>x.statut===p.statut).reduce((s,x)=>s+caProjet(x),0);
+      sep=`<div class="grp">${esc(titre[p.statut]||p.statut)}<span>${n} projet${n>1?'s':''}${ca?' · '+eur(ca):''}</span></div>`;
+    }
+    return sep+`
     <div class="card" data-id="${esc(p.id)}">
       <div class="head" data-toggle>
         <div class="st ${esc(p.statut)}" style="grid-column:1">${esc((STATUTS.find(s=>s[0]===p.statut)||['','—'])[1].split(' —')[0])}</div>
@@ -565,7 +593,7 @@ function listProjects(){
                 :`<span class="meta">lignes ${eur(s)}</span>`;})()}
           </div>
         </div>
-      </div></div>`).join('')||'<div class="empty">Aucun projet ne correspond.</div>';
+      </div></div>`;}).join('')||'<div class="empty">Aucun projet ne correspond.</div>';
   wireProjects();
 }
 function wireProjects(){
