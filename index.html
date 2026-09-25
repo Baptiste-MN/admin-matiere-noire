@@ -601,7 +601,7 @@ function wireProjects(){
     const p=DB.projects[card.dataset.id];
     card.querySelector('[data-toggle]').onclick=()=>card.classList.toggle('open');
 
-    card.querySelectorAll('.body > .grid input[data-f], .body > .grid select[data-f], .body input[data-f="remise"]').forEach(el=>{
+    card.querySelectorAll('.body > .grid input[data-f], .body > .grid select[data-f], .body input[data-f="remise"], .body input[data-f="caVendu"]').forEach(el=>{
       el.onchange=()=>{const f=el.dataset.f;
         p[f]=(f==='proBono'||f==='archive')?el.value==='1'
             :(f==='remise'||f==='caVendu')?(parseFloat(el.value.replace(',','.'))||0):el.value;
