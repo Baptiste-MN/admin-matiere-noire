@@ -239,7 +239,25 @@ function subscribe(){
   });
 }
 
+function verifierPersonnes(){
+  const pb=[], vus={};
+  DB.people.forEach((p,i)=>{
+    const nom=p.nom||('fiche n°'+(i+1));
+    if(!p.id) pb.push(`« ${nom} » n'a pas d'initiales`);
+    else if(!/^[A-Z0-9]+$/.test(p.id)) pb.push(`« ${nom} » : initiales « ${p.id} » invalides (lettres et chiffres uniquement)`);
+    else if(vus[p.id]) pb.push(`« ${nom} » et « ${vus[p.id]} » ont les mêmes initiales « ${p.id} »`);
+    else vus[p.id]=nom;
+    (p.periodes||[]).forEach(x=>{ if(x.debut&&x.fin&&x.fin<x.debut) pb.push(`« ${nom} » : une période finit avant de commencer`); });
+  });
+  return pb;
+}
 async function save(){
+  const pb=verifierPersonnes();
+  if(pb.length){
+    status('Enregistrement impossible — '+pb[0]+(pb.length>1?` (et ${pb.length-1} autre${pb.length>2?'s':''})`:''),'err');
+    alert('Enregistrement impossible :\n\n'+pb.join('\n')+'\n\nCorrige ces points puis réessaie.');
+    return;
+  }
   if(!ref){download();return;}
   const S=split();
   try{
@@ -364,7 +382,8 @@ function renderPeople(){
       </div>
       <div class="body">
         <div class="grid">
-          <div><label>Initiales</label><input data-f="id" value="${esc(p.id)}" maxlength="3"></div>
+          <div><label>Initiales</label><input data-f="id" value="${esc(p.id)}" maxlength="4" placeholder="ex. JD"
+            style="${!p.id?'border-color:var(--warn)':''}" title="Lettres et chiffres uniquement, uniques dans l'équipe"></div>
           <div><label>Nom</label><input data-f="nom" value="${esc(p.nom)}"></div>
           <div><label>Profil</label><select data-f="profil">${PROFILS.map(x=>`<option${x===p.profil?' selected':''}>${x}</option>`).join('')}</select></div>
           <div><label>Catégorie</label><select data-f="categorie">${CATEGORIES.map(([v,l])=>`<option value="${v}"${v===p.categorie?' selected':''}>${l}</option>`).join('')}</select></div>
@@ -404,6 +423,21 @@ function wirePeople(){
         if(el.dataset.p!=null){const t=p.periodes[+el.dataset.p];t[f]=(f==='fin'&&!v)?null:v;}
         else if(el.dataset.c!=null){const t=p.cjm[+el.dataset.c];t[f]=(f==='valeur')?(v===''?null:parseFloat(v.replace(',','.'))):v;}
         else if(f==='archive') p.archive=(v==='1');
+        else if(f==='id'){
+          // Firebase interdit . # $ / [ ] et les clés vides : on ne garde que lettres et chiffres
+          const net=String(v).toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]/g,'').slice(0,4);
+          p.id=net; el.value=net;
+        }
+        else if(f==='nom'){
+          p.nom=v;
+          if(!p.id){                                     // propose des initiales si elles sont vides
+            const mots=String(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().split(/[^A-Z]+/).filter(Boolean);
+            let cand=(mots.length>1?mots[0][0]+mots[mots.length-1][0]:(mots[0]||'').slice(0,2));
+            const pris=new Set(DB.people.filter(x=>x!==p).map(x=>x.id));
+            let k=2; while(cand&&pris.has(cand)&&k<9){ cand=cand.slice(0,2)+k; k++; }
+            if(cand){ p.id=cand; renderPeople(); const c=document.querySelector(`[data-i="${i}"]`); if(c)c.classList.add('open'); }
+          }
+        }
         else p[f]=(f==='cap')?parseFloat(v)||8:v;
         touch();
       };
