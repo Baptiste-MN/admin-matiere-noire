@@ -269,6 +269,7 @@ async function save(){
         await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/prive/cjm'),S.prive.cjm);
       await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/prive/devis'),S.prive.devis);
       await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/prive/couts'),S.prive.couts);
+      await ref.d.set(ref.d.ref(ref.db,FIREBASE_KEY+'/prive/factures'),S.prive.factures);
       dirty=false;$('#btn-save').disabled=true;
       status('Enregistré, CJM et devis compris · '+new Date().toLocaleTimeString('fr-FR'),'ok');
     }else{
@@ -310,16 +311,22 @@ function normalise(v){
     R[id].direction=ct.direction||R[id].direction||[];
     R[id].externes=ct.externes||R[id].externes||[];
     R[id].coutExcel=d.coutExcel??R[id].coutExcel??0;
+    const fx=(priv.factures&&priv.factures[id])||{};
+    // ancien format éventuel (liste de factures) : on en garde le net
+    const tot=Array.isArray(fx)?fx.filter(f=>f&&f.statut!=='brouillon').reduce((s,f)=>s+(Number(f.montant)||0),0):fx.total;
+    R[id].totalFacture=(tot===''||tot==null)?null:Number(tot);
+    R[id].factureNote=(!Array.isArray(fx)&&fx.note)||R[id].factureNote||'';
   });
   return {people:P,projects:R,time:v.time||{}};
 }
 /* Sépare à l'écriture : public d'un côté, prive/ de l'autre. */
 function split(){
   const cjm={},devis={},people=[],projects={};
-  const couts={};
+  const couts={}, factures={};
   DB.people.forEach(p=>{const{cjm:c,...rest}=p;cjm[p.id]=c||[];people.push(rest);});
   Object.entries(DB.projects).forEach(([id,pr])=>{
-    const{devis:d,caVendu,direction,externes,coutExcel,...rest}=pr;
+    const{devis:d,caVendu,direction,externes,coutExcel,factures:_ancien,totalFacture,factureNote,...rest}=pr;
+    if(totalFacture!=null&&totalFacture!=='') factures[id]={total:Number(totalFacture),note:factureNote||''};
     if((direction&&direction.length)||(externes&&externes.length))
       couts[id]={direction:direction||[],externes:externes||[]};
     const ca=caProjet(pr);
@@ -327,7 +334,7 @@ function split(){
       caVendu:pr.caVendu||ca, coutExcel:pr.coutExcel||0};
     projects[id]=rest;
   });
-  return {people,projects,time:DB.time,prive:{cjm,devis,couts,
+  return {people,projects,time:DB.time,prive:{cjm,devis,couts,factures,
     direction:(LOCAL_DIR||{})},version:4};
 }
 
@@ -566,9 +573,20 @@ function listProjects(){
           <div>${(p.aliases||[]).map((a,j)=>`<span class="tag x" data-del-a="${j}" title="Retirer">${esc(a)} ✕</span>`).join('')||'<span class="meta">Aucun alias</span>'}</div>
           <div class="row" style="margin:9px 0 0"><input data-new-a placeholder="Nouvel alias" style="min-width:210px"><button class="btn" data-add-a>Ajouter</button></div>
         </div>
+        <div class="sec"><h3>Facturation</h3>
+          ${(()=>{const v=caProjet(p), t=p.totalFacture, has=t!=null&&t!=='';
+            return `<div class="grid" style="grid-template-columns:180px 1fr;gap:10px;margin-bottom:6px">
+              <div><label>Total facturé HT</label><input class="num" data-tf="total" value="${has?t:''}" placeholder="à saisir"></div>
+              <div><label>Comprend</label><input data-tf="note" value="${esc(p.factureNote||'')}" placeholder="ex. honoraires + refacturation pupitreur + déplacements"></div></div>
+              <div class="meta">Vendu ${eur(v)}${has?` · facturé ${eur(t)} · écart <strong>${t-v>=0?'+':''}${eur(t-v)}</strong>
+                — le total facturé sert de chiffre d'affaires dans la rentabilité.`
+                :' · sans total facturé, la rentabilité est calculée sur le devis.'}</div>`;})()}
+        </div>
         <div class="sec"><h3>Prestataires, forfaits et achats</h3>
+          <div class="meta" style="margin:-4px 0 8px">Toutes les dépenses du projet, refacturées ou non : la refacturation est comprise dans le total facturé.</div>
           <table><thead><tr><th>Libellé</th><th style="width:120px">Type</th>
-            <th style="width:78px;text-align:right">Jours</th><th style="width:110px;text-align:right">Montant</th><th style="width:30px"></th></tr></thead><tbody>
+            <th style="width:78px;text-align:right">Jours</th><th style="width:110px;text-align:right">Montant</th>
+<th style="width:30px"></th></tr></thead><tbody>
           ${(p.externes||[]).map((x,j)=>`<tr>
             <td><input data-xf="label" data-x="${j}" value="${esc(x.label||'')}"></td>
             <td><select data-xf="categorie" data-x="${j}">${['prestataire','forfait','achat','autre'].map(c=>`<option${c===x.categorie?' selected':''}>${c}</option>`).join('')}</select></td>
@@ -672,6 +690,14 @@ function wireProjects(){
       touch(); renderProjects();
       status(`« ${p.nom} » supprimé. Cliquez sur Enregistrer pour appliquer.`,'err');
     };
+    card.querySelectorAll('[data-tf]').forEach(el=>{
+      el.onchange=()=>{
+        if(el.dataset.tf==='total'){
+          const v=String(el.value).replace(/\s/g,'').replace(',','.');
+          p.totalFacture=v===''?null:(parseFloat(v)||0);
+        } else p.factureNote=el.value;
+        touch(); reopenPr(p.id);};
+    });
     const xa=card.querySelector('[data-xadd]');
     if(xa) xa.onclick=()=>{(p.externes=p.externes||[]).push({id:uid(),label:'',categorie:'prestataire',jours:null,montant:0});touch();reopenPr(p.id);};
     card.querySelectorAll('[data-xdel]').forEach(b=>b.onclick=()=>{p.externes.splice(+b.dataset.xdel,1);touch();reopenPr(p.id);});
