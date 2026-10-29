@@ -122,6 +122,7 @@ tr:last-child td{border-bottom:0}
   <button data-v="projects" aria-selected="false">Projets</button>
   <button data-v="aliases" aria-selected="false">Alias</button>
   <button data-v="time" aria-selected="false">Temps</button>
+  <button data-v="acces" aria-selected="false">Accès</button>
 </nav>
 
 <main>
@@ -129,6 +130,7 @@ tr:last-child td{border-bottom:0}
   <section id="v-projects" hidden></section>
   <section id="v-aliases" hidden></section>
   <section id="v-time" hidden></section>
+  <section id="v-acces" hidden></section>
 </main>
 
 <script>
@@ -208,6 +210,7 @@ async function boot(){
       $('#me').textContent=u?u.email:'non connecté';
       $('#btn-auth').textContent=u?'Se déconnecter':'Se connecter';
       subscribe();
+      subAcces();
     });
   }catch(e){
     $('#mode').textContent='mode local';
@@ -341,11 +344,11 @@ function split(){
 /* ---------- navigation ---------- */
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('nav button').forEach(x=>x.setAttribute('aria-selected',x===b));
-  ['people','projects','aliases','time'].forEach(v=>$('#v-'+v).hidden=(v!==b.dataset.v));
+  ['people','projects','aliases','time','acces'].forEach(v=>$('#v-'+v).hidden=(v!==b.dataset.v));
   render();
 });
 const view=()=>document.querySelector('nav button[aria-selected="true"]').dataset.v;
-function render(){({people:renderPeople,projects:renderProjects,aliases:renderAliases,time:renderTime})[view()]();}
+function render(){({people:renderPeople,projects:renderProjects,aliases:renderAliases,time:renderTime,acces:renderAcces})[view()]();}
 
 /* ---------- personnes ---------- */
 function cjmAt(p,date){
@@ -791,6 +794,111 @@ function renderTime(){
   <div class="card" style="overflow-x:auto"><table>
     <thead><tr><th>Mois</th>${people.map(u=>`<th style="text-align:right" title="${esc((ids[u]||{}).nom||u)}">${esc(u)}</th>`).join('')}<th style="text-align:right">Total</th></tr></thead>
     <tbody>${body}</tbody></table></div>`;
+}
+
+/* ---------- accès (liste des comptes autorisés, nœud /acces) ----------
+   Écriture immédiate, indépendante du bouton Enregistrer.
+   Clé = email en minuscules, points remplacés par des virgules
+   (identique aux règles Firebase : auth.token.email.toLowerCase().replace('.', ',')). */
+const ACCES_DOMAINE='@matiere-noire.paris';
+const ACCES_DIRECTION=['baptiste@matiere-noire.paris','felix@matiere-noire.paris','pierre@matiere-noire.paris','sam@matiere-noire.paris'];
+const ACCES_INITIAL=[['baptiste','BG'],['felix','FW'],['pierre','PD'],['sam','SW'],['aleksandra','AO'],['lucien','LN'],
+  ['margot','MA'],['priscille','PR'],['kyungseo','KM'],['maria','MM'],['lenos','LK'],['anna','AS']];
+let ACCES=null, accesErr='', accesUnsub=null;
+const accesKey=e=>String(e||'').trim().toLowerCase().replace(/\./g,',');
+const accesOk=e=>/^[^\s@#$\[\]\/]+@[^\s@#$\[\]\/]+\.[a-z]{2,}$/i.test(String(e||'').trim());
+
+function subAcces(){
+  if(accesUnsub){try{accesUnsub();}catch(_){} accesUnsub=null;}
+  ACCES=null; accesErr='';
+  if(!ref||!user){ if(view()==='acces') renderAcces(); return; }
+  accesUnsub=ref.d.onValue(ref.d.ref(ref.db,'acces'),
+    s=>{ACCES=s.val()||{}; accesErr=''; if(view()==='acces') renderAcces();},
+    e=>{ACCES=null; accesErr=e.message; if(view()==='acces') renderAcces();});
+}
+async function accesEcrire(maj,okMsg){
+  try{ await ref.d.update(ref.d.ref(ref.db,'acces'),maj); status(okMsg,'ok'); }
+  catch(e){ status('Accès — échec : '+e.message,'err'); alert('Échec : '+e.message); }
+}
+function accesEntree(email,personId){
+  return {email:email.trim().toLowerCase(), personId:personId||null, ajoutePar:user.email.toLowerCase(), date:new Date().toISOString()};
+}
+
+function renderAcces(){
+  const el=$('#v-acces');
+  const intro=`<h2>Accès à la plateforme</h2>
+  <p class="hint">Comptes Google autorisés à ouvrir les outils. Chaque modification est enregistrée immédiatement (pas besoin du bouton Enregistrer). Les droits direction (CJM, devis, paie) restent définis à part, dans les règles Firebase.</p>`;
+  if(!ref){el.innerHTML=intro+'<div class="empty">Firebase indisponible.</div>';return;}
+  if(!user){el.innerHTML=intro+'<div class="empty">Connectez-vous pour gérer les accès.</div>';return;}
+  if(accesErr){el.innerHTML=intro+`<div class="card" style="border-color:var(--stop)"><div style="padding:12px 14px">
+    <strong style="color:var(--stop)">Lecture refusée.</strong> <span class="meta">${esc(accesErr)}</span>
+    <p class="hint" style="margin:8px 0 0">Vérifie que les règles de la phase 1 sont publiées et que tu es connecté avec un compte de la direction.</p></div></div>`;return;}
+  if(ACCES===null){el.innerHTML=intro+'<div class="empty">Chargement…</div>';return;}
+
+  const today=new Date().toISOString().slice(0,10);
+  const byId={}; DB.people.forEach(p=>{if(p&&p.id)byId[p.id]=p;});
+  const rows=Object.entries(ACCES).map(([k,v])=>({k,...(v||{})})).sort((a,b)=>(a.email||'').localeCompare(b.email||''));
+  const linked=new Set(rows.map(r=>r.personId).filter(Boolean));
+  const partis=rows.filter(r=>r.personId&&byId[r.personId]&&!activeAt(byId[r.personId],today));
+  const sansAcces=DB.people.filter(p=>p&&p.id&&!p.archive&&activeAt(p,today)&&!linked.has(p.id));
+  const opts=sel=>'<option value="">— aucune fiche —</option>'+DB.people.filter(p=>p&&p.id)
+    .slice().sort((a,b)=>(a.nom||'').localeCompare(b.nom||'','fr'))
+    .map(p=>`<option value="${esc(p.id)}"${p.id===sel?' selected':''}>${esc(p.nom)} (${esc(p.id)})${activeAt(p,today)?'':' — inactif'}</option>`).join('');
+
+  el.innerHTML=intro+`
+  <div class="kpi">
+    <div>Comptes autorisés<span>${rows.length}</span></div>
+    <div>Liés à une fiche<span>${rows.filter(r=>r.personId).length}</span></div>
+    <div>Fiche inactive<span style="color:${partis.length?'var(--stop)':'var(--ink)'}">${partis.length}</span></div>
+  </div>
+  ${!rows.length?`<div class="card" style="margin-bottom:16px"><div style="padding:12px 14px">
+    <p class="hint" style="margin:0 0 10px">La liste est vide. Initialiser avec l'équipe actuelle (${ACCES_INITIAL.length} comptes) :</p>
+    <div class="meta" style="margin-bottom:10px">${ACCES_INITIAL.map(([n,id])=>esc(n+ACCES_DOMAINE)+' → '+esc((byId[id]||{}).nom||id+' (fiche introuvable)')).join('<br>')}</div>
+    <button class="btn p" id="acc-init">Initialiser la liste</button></div></div>`:''}
+  ${partis.length?`<div class="card" style="border-color:var(--stop);margin-bottom:16px"><div style="padding:12px 14px">
+    <h3 style="margin:0 0 7px;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--stop)">Accès encore ouverts pour des fiches inactives</h3>
+    ${partis.map(r=>`<div class="meta" style="margin-bottom:4px"><strong style="color:var(--ink)">${esc(r.email)}</strong> → ${esc(byId[r.personId].nom)} n'est plus actif. Retirer l'accès ?</div>`).join('')}
+  </div></div>`:''}
+  <div class="row">
+    <input id="acc-email" placeholder="prenom${ACCES_DOMAINE}" style="min-width:260px">
+    <select id="acc-pers">${opts('')}</select>
+    <button class="btn p" id="acc-add">Ajouter</button>
+  </div>
+  <div class="card" style="overflow-x:auto"><table>
+    <thead><tr><th>Email</th><th>Fiche</th><th>Ajouté par</th><th>Le</th><th></th></tr></thead>
+    <tbody>${rows.map(r=>`<tr data-k="${esc(r.k)}">
+      <td class="meta" style="color:var(--ink)">${esc(r.email||r.k.replace(/,/g,'.'))}${ACCES_DIRECTION.includes(r.email)?' <span class="tag">direction</span>':''}</td>
+      <td><select data-acc-p style="min-width:200px">${opts(r.personId||'')}</select></td>
+      <td class="meta">${esc(r.ajoutePar||'—')}</td>
+      <td class="meta">${esc((r.date||'').slice(0,10)||'—')}</td>
+      <td style="text-align:right"><button class="btn d" data-acc-del>Retirer</button></td></tr>`).join('')
+      ||'<tr><td colspan="5" class="empty">Aucun compte autorisé.</td></tr>'}</tbody></table></div>
+  ${sansAcces.length?`<p class="hint" style="margin-top:14px">Personnes actives sans accès : ${sansAcces.map(p=>esc(p.nom)).join(' · ')}</p>`:''}`;
+
+  const init=$('#acc-init');
+  if(init) init.onclick=()=>{
+    const maj={}; ACCES_INITIAL.forEach(([n,id])=>{const e=n+ACCES_DOMAINE; maj[accesKey(e)]=accesEntree(e,byId[id]?id:null);});
+    accesEcrire(maj,`Accès initialisés : ${ACCES_INITIAL.length} comptes.`);
+  };
+  $('#acc-add').onclick=()=>{
+    let e=$('#acc-email').value.trim().toLowerCase();
+    if(e&&!e.includes('@')) e+=ACCES_DOMAINE;          // « lucien » → lucien@matiere-noire.paris
+    if(!accesOk(e)){alert('Adresse email invalide : '+e);return;}
+    if(ACCES[accesKey(e)]){alert(e+' a déjà accès.');return;}
+    if(!e.endsWith(ACCES_DOMAINE)&&!confirm(e+" n'est pas une adresse "+ACCES_DOMAINE+'. Ajouter quand même ?'))return;
+    accesEcrire({[accesKey(e)]:accesEntree(e,$('#acc-pers').value)},'Accès ajouté : '+e);
+  };
+  el.querySelectorAll('tr[data-k]').forEach(tr=>{
+    const k=tr.dataset.k, r=ACCES[k]||{}, email=r.email||k.replace(/,/g,'.');
+    tr.querySelector('[data-acc-p]').onchange=ev=>accesEcrire({[k+'/personId']:ev.target.value||null},'Fiche mise à jour : '+email);
+    tr.querySelector('[data-acc-del]').onclick=()=>{
+      if(email===user.email.toLowerCase()){alert('Tu ne peux pas retirer ton propre accès.');return;}
+      const msg=ACCES_DIRECTION.includes(email)
+        ? email+' fait partie de la direction : sans cet accès, la personne ne pourra plus ouvrir les outils. Retirer quand même ?'
+        : 'Retirer l\'accès de '+email+' ? La personne ne pourra plus ouvrir les outils.';
+      if(confirm(msg)) accesEcrire({[k]:null},'Accès retiré : '+email);
+    };
+  });
 }
 
 /* ---------- import / export ---------- */
